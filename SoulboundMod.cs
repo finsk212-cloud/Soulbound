@@ -9,7 +9,8 @@ namespace Soulbound
 	public enum SoulboundMessageType : byte
 	{
 		SyncHealthPool = 1,
-		RequestHealthSync = 2
+		RequestHealthSync = 2,
+		TeleportGraceStarted = 3
 	}
 
 	public class SoulboundMod : Mod
@@ -30,7 +31,7 @@ namespace Soulbound
 
 					if (Main.netMode == NetmodeID.Server)
 					{
-						// Server validates, stores pool, and relays to all clients (including fromPlayer to confirm)
+						// Server validates, stores pool, and relays to all clients except fromPlayer
 						SoulboundPool.UpdatePoolFromServer(poolLife, poolMaxLife);
 
 						ModPacket packet = GetPacket();
@@ -61,6 +62,31 @@ namespace Soulbound
 						packet.Write(currentLife);
 						packet.Write(maxLife);
 						packet.Send(whoAmI);
+					}
+					break;
+				}
+
+				case SoulboundMessageType.TeleportGraceStarted:
+				{
+					byte anchorPlayer = reader.ReadByte();
+					int graceTicks = reader.ReadInt32();
+
+					if (Main.netMode == NetmodeID.Server)
+					{
+						// Relay to other clients
+						ModPacket packet = GetPacket();
+						packet.Write((byte)SoulboundMessageType.TeleportGraceStarted);
+						packet.Write(anchorPlayer);
+						packet.Write(graceTicks);
+						packet.Send(-1, whoAmI);
+					}
+					else if (Main.netMode == NetmodeID.MultiplayerClient)
+					{
+						Player localPlayer = Main.LocalPlayer;
+						if (localPlayer.active && localPlayer.TryGetModPlayer(out SoulboundPlayer sbp))
+						{
+							sbp.StartTeleportGrace(anchorPlayer, graceTicks);
+						}
 					}
 					break;
 				}

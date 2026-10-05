@@ -1,40 +1,54 @@
 Configs: {
 	SoulboundConfig: {
-		DisplayName: Soulbound Config
+		DisplayName: Soulbound Server Config
 
 		Headers: {
-			SharedHealthSettings: Shared Health Settings Header
-			TetherSettings: Tether Settings Header
+			SharedHealthSettings: Shared Health Settings
+			TetherSettings: Tether Settings
+			TeleportGraceSettings: Teleport & Recall Settings
 		}
 
 		SharedHealthEnabled: {
 			Label: Shared Health Enabled
-			Tooltip: ""
-		}
-
-		DamageShareRatio: {
-			Label: Damage Share Ratio
-			Tooltip: ""
+			Tooltip: When enabled, all players share one unified health bar, damage, healing, and death.
 		}
 
 		TetherEnabled: {
 			Label: Tether Enabled
-			Tooltip: ""
+			Tooltip: When enabled, players cannot separate past the maximum distance.
 		}
 
 		MaxDistancePixels: {
-			Label: Max Distance Pixels
-			Tooltip: ""
+			Label: Max Distance (Pixels)
+			Tooltip: The maximum allowed distance between players (1000px is approximately one screen width).
 		}
 
-		VisualTetherLine: {
-			Label: Visual Tether Line
-			Tooltip: ""
+		TeleportGraceSeconds: {
+			Label: Teleport Grace Duration (Seconds)
+			Tooltip: When someone uses Magic Mirror, Recall Potion, or teleports, gives this many seconds before pulling the other player.
 		}
 
-		PlayPullSound: {
-			Label: Play Pull Sound
-			Tooltip: ""
+		PullInvincibilitySeconds: {
+			Label: Pull Invincibility (Seconds)
+			Tooltip: Temporary invulnerability granted to the pulled player upon arrival so they don't immediately die.
+		}
+	}
+
+	SoulboundClientConfig: {
+		DisplayName: Soulbound Client Config
+
+		Headers: {
+			VisualSettings: Visual & HUD Settings
+		}
+
+		ShowDistanceMeter: {
+			Label: Show Overhead Distance Meter
+			Tooltip: Displays distance in meters above your character's head with color transitions (green -> yellow -> red) and warning signs.
+		}
+
+		ShowTeleportWarning: {
+			Label: Show Teleport Warning Banner
+			Tooltip: Shows a clean warning message and countdown at the top of the screen when a partner teleports away.
 		}
 	}
 }

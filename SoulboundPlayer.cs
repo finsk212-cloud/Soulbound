@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.Audio;
 using Terraria.DataStructures;
 using Terraria.ID;
 using Terraria.Localization;
@@ -12,19 +13,29 @@ namespace Soulbound
 	{
 		public int previousLife = 0;
 		private bool justSpawned = true;
-		private int respawnInvulnerability = 0;
+		public int respawnInvulnerability = 0;
+
+		private Vector2 lastPosition = Vector2.Zero;
+		public int TeleportGraceTimer = 0;
+		public int TeleportAnchor = -1;
 
 		public override void Initialize()
 		{
 			justSpawned = true;
 			respawnInvulnerability = 0;
 			previousLife = Player.statLife;
+			lastPosition = Vector2.Zero;
+			TeleportGraceTimer = 0;
+			TeleportAnchor = -1;
 		}
 
 		public override void OnEnterWorld()
 		{
 			justSpawned = true;
 			respawnInvulnerability = 0;
+			lastPosition = Player.position;
+			TeleportGraceTimer = 0;
+			TeleportAnchor = -1;
 			SoulboundPool.Reset();
 
 			if (Main.netMode == NetmodeID.MultiplayerClient)
@@ -39,6 +50,7 @@ namespace Soulbound
 		{
 			justSpawned = true;
 			respawnInvulnerability = 60;
+			lastPosition = Player.position;
 			SoulboundPool.BothDead = false;
 
 			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
@@ -48,6 +60,9 @@ namespace Soulbound
 			Player.statLifeMax2 = combinedMax;
 			Player.statLife = combinedMax;
 			previousLife = combinedMax;
+
+			// Respawn far away starts grace timer so partner doesn't rubberband
+			StartTeleportGrace(Player.whoAmI, GetGraceDurationTicks());
 
 			if (Main.netMode != NetmodeID.SinglePlayer)
 			{
@@ -72,25 +87,139 @@ namespace Soulbound
 			return null;
 		}
 
+		private int GetGraceDurationTicks()
+		{
+			int seconds = SoulboundConfig.Instance != null ? SoulboundConfig.Instance.TeleportGraceSeconds : 5;
+			return Math.Max(1, seconds) * 60;
+		}
+
+		public void StartTeleportGrace(int anchorWhoAmI, int ticks)
+		{
+			TeleportAnchor = anchorWhoAmI;
+			TeleportGraceTimer = ticks;
+		}
+
+		public void PullToPartner(Player partner)
+		{
+			if (partner == null || !partner.active)
+				return;
+
+			// Safely place player at partner's position
+			Player.position = partner.position;
+			Player.velocity = Vector2.Zero;
+			Player.fallStart = (int)(Player.position.Y / 16f);
+
+			// Cancel grappling hooks
+			for (int g = 0; g < Player.grappling.Length; g++)
+			{
+				Player.grappling[g] = -1;
+			}
+
+			// Grant generous invulnerability so player doesn't instantly die on arrival
+			int invincibilitySeconds = SoulboundConfig.Instance != null ? SoulboundConfig.Instance.PullInvincibilitySeconds : 3;
+			int invincibilityTicks = Math.Max(1, invincibilitySeconds) * 60;
+			Player.immune = true;
+			Player.immuneTime = Math.Max(Player.immuneTime, invincibilityTicks);
+			respawnInvulnerability = Math.Max(respawnInvulnerability, invincibilityTicks);
+
+			// Play teleport sound and spawn clean dust
+			SoundEngine.PlaySound(SoundID.Item6, Player.position);
+			for (int d = 0; d < 35; d++)
+			{
+				Dust.NewDust(Player.position, Player.width, Player.height, DustID.MagicMirror, 0f, 0f, 150, default, 1.5f);
+			}
+
+			if (Main.netMode != NetmodeID.SinglePlayer)
+			{
+				NetMessage.SendData(MessageID.PlayerControls, -1, -1, null, Player.whoAmI);
+			}
+		}
+
 		public override void PreUpdateMovement()
 		{
 			if (respawnInvulnerability > 0)
 				respawnInvulnerability--;
 
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.TetherEnabled)
+			{
+				lastPosition = Player.position;
 				return;
+			}
 
 			if (Player.dead || !Player.active)
+			{
+				lastPosition = Player.position;
 				return;
+			}
 
 			Player partner = GetPartner();
 			if (partner == null)
+			{
+				lastPosition = Player.position;
 				return;
+			}
 
 			float maxDist = SoulboundConfig.Instance.MaxDistancePixels;
 			Vector2 toPartner = partner.Center - Player.Center;
 			float dist = toPartner.Length();
 
+			// Detect teleportation (Magic Mirror, Recall Potion, Pylon, Teleporter, etc.)
+			if (lastPosition != Vector2.Zero)
+			{
+				float movedDelta = Vector2.Distance(Player.position, lastPosition);
+				if (movedDelta > 400f)
+				{
+					// This player just teleported! Start grace period
+					int graceTicks = GetGraceDurationTicks();
+					StartTeleportGrace(Player.whoAmI, graceTicks);
+
+					if (Main.netMode != NetmodeID.SinglePlayer && SoulboundMod.Instance != null)
+					{
+						ModPacket packet = SoulboundMod.Instance.GetPacket();
+						packet.Write((byte)SoulboundMessageType.TeleportGraceStarted);
+						packet.Write((byte)Player.whoAmI);
+						packet.Write(graceTicks);
+						packet.Send();
+					}
+				}
+			}
+
+			// If distance is suddenly huge (e.g. partner teleported or spawn separation) and grace isn't active
+			if (dist > maxDist * 1.4f && TeleportGraceTimer <= 0)
+			{
+				StartTeleportGrace(partner.whoAmI, GetGraceDurationTicks());
+			}
+
+			// If both players are now back within safe tether distance, clear grace timer
+			if (dist <= maxDist && TeleportGraceTimer > 0)
+			{
+				TeleportGraceTimer = 0;
+				TeleportAnchor = -1;
+			}
+
+			// While teleport grace period is active, DO NOT clamp or jerk players
+			if (TeleportGraceTimer > 0)
+			{
+				TeleportGraceTimer--;
+
+				// If grace window just expired and players are still separated:
+				if (TeleportGraceTimer <= 0 && dist > maxDist)
+				{
+					// If we are the distant player, pull us safely to the anchor partner
+					if (Player.whoAmI == Main.myPlayer)
+					{
+						if (TeleportAnchor == partner.whoAmI || TeleportAnchor == -1)
+						{
+							PullToPartner(partner);
+						}
+					}
+				}
+
+				lastPosition = Player.position;
+				return;
+			}
+
+			// Normal tether enforcement:
 			if (dist > maxDist && dist > 0.001f)
 			{
 				Vector2 dir = toPartner / dist;
@@ -105,6 +234,8 @@ namespace Soulbound
 					Player.velocity -= (-dir) * outwardVel;
 				}
 			}
+
+			lastPosition = Player.position;
 		}
 
 		public override void ModifyMaxStats(out StatModifier health, out StatModifier mana)
@@ -183,7 +314,7 @@ namespace Soulbound
 
 				if (currentLife != previousLife)
 				{
-					// If respawn invulnerability is active, ignore unexpected damage drops
+					// If respawn or teleport invulnerability is active, ignore unexpected damage drops
 					if (respawnInvulnerability > 0 && currentLife < previousLife)
 					{
 						Player.statLife = previousLife;
