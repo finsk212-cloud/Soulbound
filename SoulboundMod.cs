@@ -8,8 +8,7 @@ namespace Soulbound
 {
 	public enum SoulboundMessageType : byte
 	{
-		SyncDamageToPartner = 1,
-		SyncHealToPartner = 2
+		SyncExactLife = 1
 	}
 
 	public class SoulboundMod : Mod
@@ -22,48 +21,18 @@ namespace Soulbound
 
 			switch (msgType)
 			{
-				case SoulboundMessageType.SyncDamageToPartner:
+				case SoulboundMessageType.SyncExactLife:
 				{
 					byte fromPlayer = reader.ReadByte();
-					int damage = reader.ReadInt32();
+					int newLife = reader.ReadInt32();
 
 					if (Main.netMode == NetmodeID.Server)
 					{
 						// Forward packet to all other clients
 						ModPacket packet = GetPacket();
-						packet.Write((byte)SoulboundMessageType.SyncDamageToPartner);
+						packet.Write((byte)SoulboundMessageType.SyncExactLife);
 						packet.Write(fromPlayer);
-						packet.Write(damage);
-						packet.Send(-1, fromPlayer);
-					}
-					else if (Main.netMode == NetmodeID.MultiplayerClient)
-					{
-						// On clients, find local partner and apply shared damage
-						Player localPlayer = Main.LocalPlayer;
-						if (localPlayer.active && !localPlayer.dead && localPlayer.whoAmI != fromPlayer)
-						{
-							var soulPlayer = localPlayer.GetModPlayer<SoulboundPlayer>();
-							if (soulPlayer.IsLinkedWith(fromPlayer))
-							{
-								soulPlayer.ApplySharedDamageDirectly(damage);
-							}
-						}
-					}
-					break;
-				}
-
-				case SoulboundMessageType.SyncHealToPartner:
-				{
-					byte fromPlayer = reader.ReadByte();
-					int healAmount = reader.ReadInt32();
-
-					if (Main.netMode == NetmodeID.Server)
-					{
-						// Forward packet to all other clients
-						ModPacket packet = GetPacket();
-						packet.Write((byte)SoulboundMessageType.SyncHealToPartner);
-						packet.Write(fromPlayer);
-						packet.Write(healAmount);
+						packet.Write(newLife);
 						packet.Send(-1, fromPlayer);
 					}
 					else if (Main.netMode == NetmodeID.MultiplayerClient)
@@ -72,10 +41,7 @@ namespace Soulbound
 						if (localPlayer.active && !localPlayer.dead && localPlayer.whoAmI != fromPlayer)
 						{
 							var soulPlayer = localPlayer.GetModPlayer<SoulboundPlayer>();
-							if (soulPlayer.IsLinkedWith(fromPlayer))
-							{
-								soulPlayer.ApplySharedHealDirectly(healAmount);
-							}
+							soulPlayer.ReceiveSyncedLife(newLife);
 						}
 					}
 					break;

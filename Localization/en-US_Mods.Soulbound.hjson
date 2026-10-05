@@ -1,0 +1,40 @@
+Configs: {
+	SoulboundConfig: {
+		DisplayName: Soulbound Config
+
+		Headers: {
+			SharedHealthSettings: Shared Health Settings Header
+			TetherSettings: Tether Settings Header
+		}
+
+		SharedHealthEnabled: {
+			Label: Shared Health Enabled
+			Tooltip: ""
+		}
+
+		DamageShareRatio: {
+			Label: Damage Share Ratio
+			Tooltip: ""
+		}
+
+		TetherEnabled: {
+			Label: Tether Enabled
+			Tooltip: ""
+		}
+
+		MaxDistancePixels: {
+			Label: Max Distance Pixels
+			Tooltip: ""
+		}
+
+		VisualTetherLine: {
+			Label: Visual Tether Line
+			Tooltip: ""
+		}
+
+		PlayPullSound: {
+			Label: Play Pull Sound
+			Tooltip: ""
+		}
+	}
+}

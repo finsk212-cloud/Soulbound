@@ -15,25 +15,14 @@ namespace Soulbound
 		[DefaultValue(true)]
 		public bool SharedHealthEnabled;
 
-		[Range(0.0f, 1.0f)]
-		[DefaultValue(1.0f)]
-		[Slider]
-		public float DamageShareRatio;
-
 		[Header("TetherSettings")]
 
 		[DefaultValue(true)]
 		public bool TetherEnabled;
 
-		[Range(600, 3000)]
-		[DefaultValue(1200)]
+		[Range(400, 2500)]
+		[DefaultValue(1000)]
 		[Increment(50)]
 		public int MaxDistancePixels;
-
-		[DefaultValue(true)]
-		public bool VisualTetherLine;
-
-		[DefaultValue(true)]
-		public bool PlayPullSound;
 	}
 }
