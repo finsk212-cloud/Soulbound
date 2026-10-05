@@ -12,21 +12,23 @@ namespace Soulbound
 	{
 		private int previousLife = 0;
 		private bool justSpawned = true;
+		private int respawnInvulnerability = 0;
 
 		public override void Initialize()
 		{
 			justSpawned = true;
+			respawnInvulnerability = 0;
 			previousLife = Player.statLife;
 		}
 
 		public override void OnEnterWorld()
 		{
 			justSpawned = true;
+			respawnInvulnerability = 0;
 			SoulboundPool.Reset();
 
 			if (Main.netMode == NetmodeID.MultiplayerClient)
 			{
-				// Ask server for current pool
 				ModPacket packet = Mod.GetPacket();
 				packet.Write((byte)SoulboundMessageType.RequestHealthSync);
 				packet.Send();
@@ -36,20 +38,24 @@ namespace Soulbound
 		public override void OnRespawn()
 		{
 			justSpawned = true;
-			int totalMax = SoulboundPool.CalculateTotalMaxLife();
-			SoulboundPool.SharedMaxLife = totalMax;
-			SoulboundPool.SharedCurrentLife = totalMax; // Respawn pool restored
-			Player.statLife = totalMax;
-			Player.statLifeMax2 = totalMax;
-			previousLife = totalMax;
+			// 60 frames (1 second) of respawn grace period so delayed packets don't instantly re-kill
+			respawnInvulnerability = 60;
+			SoulboundPool.BothDead = false;
+
+			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
+			SoulboundPool.SharedMaxLife = combinedMax;
+			SoulboundPool.SharedCurrentLife = combinedMax;
+			Player.statLife = combinedMax;
+			Player.statLifeMax2 = combinedMax;
+			previousLife = combinedMax;
 
 			if (Main.netMode != NetmodeID.SinglePlayer)
 			{
 				ModPacket packet = Mod.GetPacket();
 				packet.Write((byte)SoulboundMessageType.SyncHealthPool);
 				packet.Write((byte)Player.whoAmI);
-				packet.Write(totalMax);
-				packet.Write(totalMax);
+				packet.Write(combinedMax);
+				packet.Write(combinedMax);
 				packet.Send();
 			}
 		}
@@ -68,6 +74,9 @@ namespace Soulbound
 
 		public override void PreUpdateMovement()
 		{
+			if (respawnInvulnerability > 0)
+				respawnInvulnerability--;
+
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.TetherEnabled)
 				return;
 
@@ -86,7 +95,7 @@ namespace Soulbound
 			{
 				Vector2 dir = toPartner / dist;
 
-				// Hard clamp so players cannot separate past screen distance
+				// Clamp position so players cannot separate past screen distance
 				Player.position = partner.Center - dir * maxDist - new Vector2(Player.width / 2f, Player.height / 2f);
 
 				// Cancel outward velocity
@@ -106,12 +115,11 @@ namespace Soulbound
 			if (Player.dead || !Player.active)
 				return;
 
-			// Expand statLifeMax2 to the combined health pool
-			int combinedMax = SoulboundPool.CalculateTotalMaxLife();
+			// Combined max life from base statLifeMax
+			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
 			SoulboundPool.SharedMaxLife = combinedMax;
 			Player.statLifeMax2 = combinedMax;
 
-			// On initial spawn, sync starting pool
 			if (justSpawned)
 			{
 				if (!SoulboundPool.Initialized)
@@ -125,19 +133,29 @@ namespace Soulbound
 				return;
 			}
 
-			// Detect any natural changes on the local player (Regen, Potion heal, Life Crystal, Nurse, Lava, Suffocation, Traps)
 			if (Player.whoAmI == Main.myPlayer)
 			{
 				int currentLife = Player.statLife;
-				if (currentLife != previousLife)
+
+				// Did this player heal (potion, regeneration, heart pick up, Nurse)?
+				if (currentLife > previousLife)
 				{
-					int delta = currentLife - previousLife;
-					SoulboundPool.ModifyPoolDelta(delta, Player.whoAmI);
+					int healedAmount = currentLife - previousLife;
+					int newPool = Math.Min(combinedMax, SoulboundPool.SharedCurrentLife + healedAmount);
+					SoulboundPool.ModifyPool(newPool, Player.whoAmI);
+					previousLife = SoulboundPool.SharedCurrentLife;
+				}
+				// Did this player take direct passive environmental damage (lava, suffocation, fall damage)?
+				else if (currentLife < previousLife && respawnInvulnerability <= 0)
+				{
+					int damageTaken = previousLife - currentLife;
+					int newPool = Math.Max(0, SoulboundPool.SharedCurrentLife - damageTaken);
+					SoulboundPool.ModifyPool(newPool, Player.whoAmI);
 					previousLife = SoulboundPool.SharedCurrentLife;
 				}
 				else
 				{
-					// Ensure player displays current shared pool
+					// Normal frame: keep player's health exactly locked to the shared pool
 					Player.statLife = SoulboundPool.SharedCurrentLife;
 					previousLife = Player.statLife;
 				}
@@ -155,34 +173,21 @@ namespace Soulbound
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
 				return;
 
-			if (Player.whoAmI != Main.myPlayer)
+			if (Player.whoAmI != Main.myPlayer || respawnInvulnerability > 0)
 				return;
 
-			// Enemy hits or player hurt: subtract damage from the combined pool
-			SoulboundPool.ModifyPoolDelta(-info.Damage, Player.whoAmI);
+			// Direct enemy hits
+			int newPool = Math.Max(0, SoulboundPool.SharedCurrentLife - info.Damage);
+			SoulboundPool.ModifyPool(newPool, Player.whoAmI);
 			previousLife = SoulboundPool.SharedCurrentLife;
 			Player.statLife = SoulboundPool.SharedCurrentLife;
-
-			if (SoulboundPool.SharedCurrentLife <= 0)
-			{
-				Player.statLife = 0;
-				Player.KillMe(
-					PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(Player.name + " shared their soulbound partner's fatal blow.")),
-					1000,
-					0
-				);
-			}
 		}
 
-		// When drinking a health potion, Terraria calls GetHealLife.
-		// We guarantee the heal amount applies fully to the combined health pool:
-		public override void GetHealLife(Item item, bool quickHeal, ref int healValue)
+		public override bool PreKill(double damage, int hitDirection, bool pvp, ref bool playSound, ref bool genDust, ref PlayerDeathReason damageSource)
 		{
-			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
-				return;
-
-			// healValue is the full potion heal amount (e.g. 50 for Lesser, 100 for Regular, 150 for Greater)
-			// Terraria will add healValue to Player.statLife, which PostUpdateMiscEffects detects as a delta!
+			// When dead, reset pool to 0
+			SoulboundPool.SharedCurrentLife = 0;
+			return true;
 		}
 	}
 }
