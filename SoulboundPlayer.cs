@@ -10,18 +10,48 @@ namespace Soulbound
 {
 	public class SoulboundPlayer : ModPlayer
 	{
-		private bool isReceivingSync = false;
-		private int lastLife = 0;
+		private int previousLife = 0;
+		private bool justSpawned = true;
 
 		public override void Initialize()
 		{
-			isReceivingSync = false;
-			lastLife = Player.statLife;
+			justSpawned = true;
+			previousLife = Player.statLife;
 		}
 
 		public override void OnEnterWorld()
 		{
-			lastLife = Player.statLife;
+			justSpawned = true;
+			SoulboundPool.Reset();
+
+			if (Main.netMode == NetmodeID.MultiplayerClient)
+			{
+				// Ask server for current pool
+				ModPacket packet = Mod.GetPacket();
+				packet.Write((byte)SoulboundMessageType.RequestHealthSync);
+				packet.Send();
+			}
+		}
+
+		public override void OnRespawn()
+		{
+			justSpawned = true;
+			int totalMax = SoulboundPool.CalculateTotalMaxLife();
+			SoulboundPool.SharedMaxLife = totalMax;
+			SoulboundPool.SharedCurrentLife = totalMax; // Respawn pool restored
+			Player.statLife = totalMax;
+			Player.statLifeMax2 = totalMax;
+			previousLife = totalMax;
+
+			if (Main.netMode != NetmodeID.SinglePlayer)
+			{
+				ModPacket packet = Mod.GetPacket();
+				packet.Write((byte)SoulboundMessageType.SyncHealthPool);
+				packet.Write((byte)Player.whoAmI);
+				packet.Write(totalMax);
+				packet.Write(totalMax);
+				packet.Send();
+			}
 		}
 
 		public Player GetPartner()
@@ -56,10 +86,10 @@ namespace Soulbound
 			{
 				Vector2 dir = toPartner / dist;
 
-				// Clamp position strictly so player cannot separate past maxDist
+				// Hard clamp so players cannot separate past screen distance
 				Player.position = partner.Center - dir * maxDist - new Vector2(Player.width / 2f, Player.height / 2f);
 
-				// Cancel any velocity heading away from partner
+				// Cancel outward velocity
 				float outwardVel = Vector2.Dot(Player.velocity, -dir);
 				if (outwardVel > 0f)
 				{
@@ -68,7 +98,7 @@ namespace Soulbound
 			}
 		}
 
-		public override void PostUpdate()
+		public override void PostUpdateMiscEffects()
 		{
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
 				return;
@@ -76,13 +106,48 @@ namespace Soulbound
 			if (Player.dead || !Player.active)
 				return;
 
-			// If our health changed naturally (e.g. potion, regeneration, lava, falling, drowning), sync exact HP to partner
-			if (!isReceivingSync && Player.statLife != lastLife)
+			// Expand statLifeMax2 to the combined health pool
+			int combinedMax = SoulboundPool.CalculateTotalMaxLife();
+			SoulboundPool.SharedMaxLife = combinedMax;
+			Player.statLifeMax2 = combinedMax;
+
+			// On initial spawn, sync starting pool
+			if (justSpawned)
 			{
-				BroadcastLifeToPartner(Player.statLife);
+				if (!SoulboundPool.Initialized)
+				{
+					SoulboundPool.SharedCurrentLife = combinedMax;
+					SoulboundPool.Initialized = true;
+				}
+				Player.statLife = SoulboundPool.SharedCurrentLife;
+				previousLife = Player.statLife;
+				justSpawned = false;
+				return;
 			}
 
-			lastLife = Player.statLife;
+			// Detect any natural changes on the local player (Regen, Potion heal, Life Crystal, Nurse, Lava, Suffocation, Traps)
+			if (Player.whoAmI == Main.myPlayer)
+			{
+				int currentLife = Player.statLife;
+				if (currentLife != previousLife)
+				{
+					int delta = currentLife - previousLife;
+					SoulboundPool.ModifyPoolDelta(delta, Player.whoAmI);
+					previousLife = SoulboundPool.SharedCurrentLife;
+				}
+				else
+				{
+					// Ensure player displays current shared pool
+					Player.statLife = SoulboundPool.SharedCurrentLife;
+					previousLife = Player.statLife;
+				}
+			}
+			else
+			{
+				// Remote player on our client
+				Player.statLife = SoulboundPool.SharedCurrentLife;
+				previousLife = Player.statLife;
+			}
 		}
 
 		public override void OnHurt(Player.HurtInfo info)
@@ -90,51 +155,34 @@ namespace Soulbound
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
 				return;
 
-			if (isReceivingSync)
+			if (Player.whoAmI != Main.myPlayer)
 				return;
 
-			// Broadcast updated health after hurt
-			BroadcastLifeToPartner(Player.statLife);
-			lastLife = Player.statLife;
+			// Enemy hits or player hurt: subtract damage from the combined pool
+			SoulboundPool.ModifyPoolDelta(-info.Damage, Player.whoAmI);
+			previousLife = SoulboundPool.SharedCurrentLife;
+			Player.statLife = SoulboundPool.SharedCurrentLife;
+
+			if (SoulboundPool.SharedCurrentLife <= 0)
+			{
+				Player.statLife = 0;
+				Player.KillMe(
+					PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(Player.name + " shared their soulbound partner's fatal blow.")),
+					1000,
+					0
+				);
+			}
 		}
 
-		private void BroadcastLifeToPartner(int life)
+		// When drinking a health potion, Terraria calls GetHealLife.
+		// We guarantee the heal amount applies fully to the combined health pool:
+		public override void GetHealLife(Item item, bool quickHeal, ref int healValue)
 		{
-			if (Main.netMode == NetmodeID.SinglePlayer)
+			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
 				return;
 
-			ModPacket packet = Mod.GetPacket();
-			packet.Write((byte)SoulboundMessageType.SyncExactLife);
-			packet.Write((byte)Player.whoAmI);
-			packet.Write(life);
-			packet.Send();
-		}
-
-		public void ReceiveSyncedLife(int syncedLife)
-		{
-			if (Player.dead || !Player.active)
-				return;
-
-			isReceivingSync = true;
-			try
-			{
-				Player.statLife = Math.Clamp(syncedLife, 0, Player.statLifeMax2);
-				lastLife = Player.statLife;
-
-				if (Player.statLife <= 0)
-				{
-					Player.statLife = 0;
-					Player.KillMe(
-						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(Player.name + " shared their soulbound partner's fate.")),
-						1000,
-						0
-					);
-				}
-			}
-			finally
-			{
-				isReceivingSync = false;
-			}
+			// healValue is the full potion heal amount (e.g. 50 for Lesser, 100 for Regular, 150 for Greater)
+			// Terraria will add healValue to Player.statLife, which PostUpdateMiscEffects detects as a delta!
 		}
 	}
 }

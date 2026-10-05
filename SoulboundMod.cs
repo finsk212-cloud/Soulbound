@@ -8,7 +8,8 @@ namespace Soulbound
 {
 	public enum SoulboundMessageType : byte
 	{
-		SyncExactLife = 1
+		SyncHealthPool = 1,
+		RequestHealthSync = 2
 	}
 
 	public class SoulboundMod : Mod
@@ -21,28 +22,42 @@ namespace Soulbound
 
 			switch (msgType)
 			{
-				case SoulboundMessageType.SyncExactLife:
+				case SoulboundMessageType.SyncHealthPool:
 				{
 					byte fromPlayer = reader.ReadByte();
-					int newLife = reader.ReadInt32();
+					int poolLife = reader.ReadInt32();
+					int poolMaxLife = reader.ReadInt32();
 
 					if (Main.netMode == NetmodeID.Server)
 					{
-						// Forward packet to all other clients
+						// Server updates pool and relays to all clients
+						SoulboundPool.UpdatePoolFromServer(poolLife, poolMaxLife);
+
 						ModPacket packet = GetPacket();
-						packet.Write((byte)SoulboundMessageType.SyncExactLife);
+						packet.Write((byte)SoulboundMessageType.SyncHealthPool);
 						packet.Write(fromPlayer);
-						packet.Write(newLife);
+						packet.Write(poolLife);
+						packet.Write(poolMaxLife);
 						packet.Send(-1, fromPlayer);
 					}
 					else if (Main.netMode == NetmodeID.MultiplayerClient)
 					{
-						Player localPlayer = Main.LocalPlayer;
-						if (localPlayer.active && !localPlayer.dead && localPlayer.whoAmI != fromPlayer)
-						{
-							var soulPlayer = localPlayer.GetModPlayer<SoulboundPlayer>();
-							soulPlayer.ReceiveSyncedLife(newLife);
-						}
+						SoulboundPool.ReceiveSyncedPool(poolLife, poolMaxLife);
+					}
+					break;
+				}
+
+				case SoulboundMessageType.RequestHealthSync:
+				{
+					if (Main.netMode == NetmodeID.Server)
+					{
+						// Send current pool to requesting client
+						ModPacket packet = GetPacket();
+						packet.Write((byte)SoulboundMessageType.SyncHealthPool);
+						packet.Write((byte)255);
+						packet.Write(SoulboundPool.SharedCurrentLife);
+						packet.Write(SoulboundPool.SharedMaxLife);
+						packet.Send(whoAmI);
 					}
 					break;
 				}
