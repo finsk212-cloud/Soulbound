@@ -30,15 +30,15 @@ namespace Soulbound
 
 					if (Main.netMode == NetmodeID.Server)
 					{
-						// Server updates pool and relays to all clients
+						// Server validates, stores pool, and relays to all clients (including fromPlayer to confirm)
 						SoulboundPool.UpdatePoolFromServer(poolLife, poolMaxLife);
 
 						ModPacket packet = GetPacket();
 						packet.Write((byte)SoulboundMessageType.SyncHealthPool);
 						packet.Write(fromPlayer);
-						packet.Write(poolLife);
-						packet.Write(poolMaxLife);
-						packet.Send(-1, fromPlayer);
+						packet.Write(SoulboundPool.SharedCurrentLife);
+						packet.Write(SoulboundPool.SharedMaxLife);
+						packet.Send(-1, whoAmI);
 					}
 					else if (Main.netMode == NetmodeID.MultiplayerClient)
 					{
@@ -51,12 +51,15 @@ namespace Soulbound
 				{
 					if (Main.netMode == NetmodeID.Server)
 					{
-						// Send current pool to requesting client
+						// Calculate current server-side pool and send to requesting client
+						int currentLife = SoulboundPool.SharedCurrentLife;
+						int maxLife = SoulboundPool.CalculateCombinedMaxLife();
+
 						ModPacket packet = GetPacket();
 						packet.Write((byte)SoulboundMessageType.SyncHealthPool);
 						packet.Write((byte)255);
-						packet.Write(SoulboundPool.SharedCurrentLife);
-						packet.Write(SoulboundPool.SharedMaxLife);
+						packet.Write(currentLife);
+						packet.Write(maxLife);
 						packet.Send(whoAmI);
 					}
 					break;

@@ -38,15 +38,15 @@ namespace Soulbound
 		public override void OnRespawn()
 		{
 			justSpawned = true;
-			// 60 frames (1 second) of respawn grace period so delayed packets don't instantly re-kill
 			respawnInvulnerability = 60;
 			SoulboundPool.BothDead = false;
 
 			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
 			SoulboundPool.SharedMaxLife = combinedMax;
 			SoulboundPool.SharedCurrentLife = combinedMax;
-			Player.statLife = combinedMax;
+
 			Player.statLifeMax2 = combinedMax;
+			Player.statLife = combinedMax;
 			previousLife = combinedMax;
 
 			if (Main.netMode != NetmodeID.SinglePlayer)
@@ -95,7 +95,7 @@ namespace Soulbound
 			{
 				Vector2 dir = toPartner / dist;
 
-				// Clamp position so players cannot separate past screen distance
+				// Clamp position strictly so players cannot separate past screen distance
 				Player.position = partner.Center - dir * maxDist - new Vector2(Player.width / 2f, Player.height / 2f);
 
 				// Cancel outward velocity
@@ -107,6 +107,20 @@ namespace Soulbound
 			}
 		}
 
+		public override void PostUpdateEquips()
+		{
+			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
+				return;
+
+			if (Player.dead || !Player.active)
+				return;
+
+			// Expand statLifeMax2 right after equips/buffs have run so Terraria HUD displays all combined hearts
+			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
+			SoulboundPool.SharedMaxLife = combinedMax;
+			Player.statLifeMax2 = combinedMax;
+		}
+
 		public override void PostUpdateMiscEffects()
 		{
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
@@ -115,7 +129,6 @@ namespace Soulbound
 			if (Player.dead || !Player.active)
 				return;
 
-			// Combined max life from base statLifeMax
 			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
 			SoulboundPool.SharedMaxLife = combinedMax;
 			Player.statLifeMax2 = combinedMax;
@@ -137,7 +150,7 @@ namespace Soulbound
 			{
 				int currentLife = Player.statLife;
 
-				// Did this player heal (potion, regeneration, heart pick up, Nurse)?
+				// Did this player heal (potion, regeneration, heart pickup, Nurse)?
 				if (currentLife > previousLife)
 				{
 					int healedAmount = currentLife - previousLife;
@@ -145,7 +158,7 @@ namespace Soulbound
 					SoulboundPool.ModifyPool(newPool, Player.whoAmI);
 					previousLife = SoulboundPool.SharedCurrentLife;
 				}
-				// Did this player take direct passive environmental damage (lava, suffocation, fall damage)?
+				// Did this player take environmental / passive damage (lava, suffocation, fall damage, debuff)?
 				else if (currentLife < previousLife && respawnInvulnerability <= 0)
 				{
 					int damageTaken = previousLife - currentLife;
@@ -155,7 +168,7 @@ namespace Soulbound
 				}
 				else
 				{
-					// Normal frame: keep player's health exactly locked to the shared pool
+					// Normal tick: keep health exactly synchronized with the shared pool
 					Player.statLife = SoulboundPool.SharedCurrentLife;
 					previousLife = Player.statLife;
 				}
@@ -176,16 +189,18 @@ namespace Soulbound
 			if (Player.whoAmI != Main.myPlayer || respawnInvulnerability > 0)
 				return;
 
-			// Direct enemy hits
+			// Direct enemy damage: subtract from the combined shared pool
 			int newPool = Math.Max(0, SoulboundPool.SharedCurrentLife - info.Damage);
 			SoulboundPool.ModifyPool(newPool, Player.whoAmI);
+
+			// Immediately set both previousLife and Player.statLife to the newly damaged pool
+			// so the subsequent PostUpdate tick does NOT mistake the hurt reduction for an unexpected delta!
 			previousLife = SoulboundPool.SharedCurrentLife;
 			Player.statLife = SoulboundPool.SharedCurrentLife;
 		}
 
 		public override bool PreKill(double damage, int hitDirection, bool pvp, ref bool playSound, ref bool genDust, ref PlayerDeathReason damageSource)
 		{
-			// When dead, reset pool to 0
 			SoulboundPool.SharedCurrentLife = 0;
 			return true;
 		}

@@ -36,7 +36,15 @@ namespace Soulbound
 				}
 			}
 
-			return activeCount > 0 ? totalMax : 200;
+			// For 2 players with default starting health (100 each), total is 200.
+			// When players use Life Crystals (up to 400 each), total is 800 (or 1000 with Life Fruit).
+			// If only 1 player is connected so far, prepare minimum 200 (10 hearts) for co-op partnership.
+			if (activeCount == 1 && totalMax == 100)
+			{
+				totalMax = 200;
+			}
+
+			return Math.Max(totalMax, 200);
 		}
 
 		public static void UpdatePoolFromServer(int currentLife, int maxLife)
@@ -58,13 +66,12 @@ namespace Soulbound
 				localPlayer.statLife = SharedCurrentLife;
 				localPlayer.statLifeMax2 = SharedMaxLife;
 
-				// If the pool reached 0 and player is not dead yet, kill them
 				if (SharedCurrentLife <= 0 && !localPlayer.dead)
 				{
 					BothDead = true;
 					localPlayer.statLife = 0;
 					localPlayer.KillMe(
-						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fate.")),
+						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
 						1000,
 						0
 					);
