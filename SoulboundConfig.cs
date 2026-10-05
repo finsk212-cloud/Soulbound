@@ -36,6 +36,13 @@ namespace Soulbound
 		[DefaultValue(3)]
 		[Increment(1)]
 		public int PullInvincibilitySeconds;
+
+		[Header("RespawnSettings")]
+
+		[Range(1, 5)]
+		[DefaultValue(1)]
+		[Increment(1)]
+		public int RespawnInvincibilitySeconds;
 	}
 
 	public class SoulboundClientConfig : ModConfig

@@ -6,6 +6,7 @@ Configs: {
 			SharedHealthSettings: Shared Health Settings
 			TetherSettings: Tether Settings
 			TeleportGraceSettings: Teleport & Recall Settings
+			RespawnSettings: Respawn & Safety Settings
 		}
 
 		SharedHealthEnabled: {
@@ -32,11 +33,19 @@ Configs: {
 			Label: Pull Invincibility (Seconds)
 			Tooltip: Temporary invulnerability granted to the pulled player upon arrival so they don't immediately die.
 		}
+
+		RespawnInvincibilitySeconds: {
+			Label: Respawn Invincibility (Seconds)
+			Tooltip: Invulnerability grace period granted upon respawn to protect against simultaneous respawn bugs, late packets, or spawn traps.
+		}
 	}
 
 	SoulboundClientConfig: {
 		DisplayName: Soulbound Client Config
-		Headers.VisualSettings: Visual & HUD Settings
+
+		Headers: {
+			VisualSettings: Visual & HUD Settings
+		}
 
 		ShowDistanceMeter: {
 			Label: Show Overhead Distance Meter

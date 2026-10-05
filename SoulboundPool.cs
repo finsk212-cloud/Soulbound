@@ -110,6 +110,10 @@ namespace Soulbound
 			Player localPlayer = Main.LocalPlayer;
 			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead && !IsKillingPartner)
 			{
+				// If local player has respawn invulnerability active, ignore fatal synchronization
+				if (localPlayer.TryGetModPlayer(out SoulboundPlayer sbp) && sbp.respawnInvulnerability > 0)
+					return;
+
 				try
 				{
 					IsKillingPartner = true;
@@ -150,9 +154,12 @@ namespace Soulbound
 			}
 
 			Player localPlayer = Main.LocalPlayer;
-			// Only kill localPlayer if they aren't ALREADY the one dying (avoids recursive KillMe during PreKill)
+			// Only kill localPlayer if they aren't ALREADY the one dying and not in respawn invulnerability
 			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead && !IsKillingPartner && localPlayer.whoAmI != fromPlayer)
 			{
+				if (localPlayer.TryGetModPlayer(out SoulboundPlayer sbp) && sbp.respawnInvulnerability > 0)
+					return;
+
 				try
 				{
 					IsKillingPartner = true;

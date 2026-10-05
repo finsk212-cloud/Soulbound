@@ -32,7 +32,11 @@ namespace Soulbound
 		public override void OnEnterWorld()
 		{
 			justSpawned = true;
-			respawnInvulnerability = 0;
+			int respawnTicks = GetRespawnInvulnerabilityTicks();
+			respawnInvulnerability = respawnTicks;
+			Player.immune = true;
+			Player.immuneTime = Math.Max(Player.immuneTime, respawnTicks);
+
 			lastPosition = Player.position;
 			TeleportGraceTimer = 0;
 			TeleportAnchor = -1;
@@ -49,7 +53,12 @@ namespace Soulbound
 		public override void OnRespawn()
 		{
 			justSpawned = true;
-			respawnInvulnerability = 60;
+			int respawnTicks = GetRespawnInvulnerabilityTicks();
+			respawnInvulnerability = respawnTicks;
+			Player.immune = true;
+			Player.immuneTime = Math.Max(Player.immuneTime, respawnTicks);
+			Player.immuneNoBlink = true;
+
 			lastPosition = Player.position;
 			SoulboundPool.BothDead = false;
 
@@ -93,6 +102,13 @@ namespace Soulbound
 			return Math.Max(1, seconds) * 60;
 		}
 
+		private int GetRespawnInvulnerabilityTicks()
+		{
+			int seconds = SoulboundConfig.Instance != null ? SoulboundConfig.Instance.RespawnInvincibilitySeconds : 1;
+			// Minimum 30 ticks (0.5s), default 60 ticks (1.0s)
+			return Math.Max(30, seconds * 60);
+		}
+
 		public void StartTeleportGrace(int anchorWhoAmI, int ticks)
 		{
 			TeleportAnchor = anchorWhoAmI;
@@ -133,6 +149,30 @@ namespace Soulbound
 			{
 				NetMessage.SendData(MessageID.PlayerControls, -1, -1, null, Player.whoAmI);
 			}
+		}
+
+		public override bool ImmuneTo(PlayerDeathReason damageSource, int cooldownCounter, bool dodgeable)
+		{
+			if (respawnInvulnerability > 0)
+				return true;
+
+			return base.ImmuneTo(damageSource, cooldownCounter, dodgeable);
+		}
+
+		public override bool CanBeHitByNPC(NPC npc, ref int cooldownSlot)
+		{
+			if (respawnInvulnerability > 0)
+				return false;
+
+			return base.CanBeHitByNPC(npc, ref cooldownSlot);
+		}
+
+		public override bool CanBeHitByProjectile(Projectile proj)
+		{
+			if (respawnInvulnerability > 0)
+				return false;
+
+			return base.CanBeHitByProjectile(proj);
 		}
 
 		public override void PreUpdateMovement()
@@ -342,6 +382,14 @@ namespace Soulbound
 
 		public override bool PreKill(double damage, int hitDirection, bool pvp, ref bool playSound, ref bool genDust, ref PlayerDeathReason damageSource)
 		{
+			if (respawnInvulnerability > 0)
+			{
+				Player.statLife = Math.Max(Player.statLife, 1);
+				return false;
+			}
+
+			SoulboundPool.BothDead = true;
+			SoulboundPool.SharedCurrentLife = 0;
 			SoulboundPool.ModifyPool(0, Player.whoAmI);
 			return true;
 		}
