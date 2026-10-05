@@ -22,6 +22,25 @@ namespace Soulbound
 			SharedMaxLife = 200;
 		}
 
+		public static int GetBaseMaxLife(Player player)
+		{
+			if (player == null || !player.active)
+				return 100;
+
+			return 100 + (player.ConsumedLifeCrystals * 20) + (player.ConsumedLifeFruit * 5);
+		}
+
+		public static int GetActivePlayerCount()
+		{
+			int count = 0;
+			for (int i = 0; i < Main.maxPlayers; i++)
+			{
+				if (Main.player[i].active)
+					count++;
+			}
+			return Math.Max(1, count);
+		}
+
 		public static int CalculateCombinedMaxLife()
 		{
 			int totalMax = 0;
@@ -31,17 +50,15 @@ namespace Soulbound
 				Player p = Main.player[i];
 				if (p.active)
 				{
-					totalMax += p.statLifeMax;
+					totalMax += GetBaseMaxLife(p);
 					activeCount++;
 				}
 			}
 
-			// For 2 players with default starting health (100 each), total is 200.
-			// When players use Life Crystals (up to 400 each), total is 800 (or 1000 with Life Fruit).
-			// If only 1 player is connected so far, prepare minimum 200 (10 hearts) for co-op partnership.
-			if (activeCount == 1 && totalMax == 100)
+			// When only 1 player is connected in testing or waiting for partner, prepare 200 HP (10 hearts)
+			if (activeCount <= 1)
 			{
-				totalMax = 200;
+				totalMax = Math.Max(totalMax * 2, 200);
 			}
 
 			return Math.Max(totalMax, 200);
@@ -52,6 +69,20 @@ namespace Soulbound
 			SharedMaxLife = Math.Max(1, maxLife);
 			SharedCurrentLife = Math.Clamp(currentLife, 0, SharedMaxLife);
 			Initialized = true;
+
+			for (int i = 0; i < Main.maxPlayers; i++)
+			{
+				Player p = Main.player[i];
+				if (p.active)
+				{
+					p.statLife = SharedCurrentLife;
+					p.statLifeMax2 = SharedMaxLife;
+					if (p.TryGetModPlayer(out SoulboundPlayer sbp))
+					{
+						sbp.previousLife = SharedCurrentLife;
+					}
+				}
+			}
 		}
 
 		public static void ReceiveSyncedPool(int currentLife, int maxLife)
@@ -60,22 +91,30 @@ namespace Soulbound
 			SharedCurrentLife = Math.Clamp(currentLife, 0, SharedMaxLife);
 			Initialized = true;
 
-			Player localPlayer = Main.LocalPlayer;
-			if (localPlayer.active)
+			for (int i = 0; i < Main.maxPlayers; i++)
 			{
-				localPlayer.statLife = SharedCurrentLife;
-				localPlayer.statLifeMax2 = SharedMaxLife;
-
-				if (SharedCurrentLife <= 0 && !localPlayer.dead)
+				Player p = Main.player[i];
+				if (p.active)
 				{
-					BothDead = true;
-					localPlayer.statLife = 0;
-					localPlayer.KillMe(
-						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
-						1000,
-						0
-					);
+					p.statLife = SharedCurrentLife;
+					p.statLifeMax2 = SharedMaxLife;
+					if (p.TryGetModPlayer(out SoulboundPlayer sbp))
+					{
+						sbp.previousLife = SharedCurrentLife;
+					}
 				}
+			}
+
+			Player localPlayer = Main.LocalPlayer;
+			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead)
+			{
+				BothDead = true;
+				localPlayer.statLife = 0;
+				localPlayer.KillMe(
+					PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
+					1000,
+					0
+				);
 			}
 		}
 
@@ -86,26 +125,34 @@ namespace Soulbound
 			SharedCurrentLife = Math.Clamp(newLife, 0, SharedMaxLife);
 			Initialized = true;
 
-			Player localPlayer = Main.LocalPlayer;
-			if (localPlayer.active)
+			for (int i = 0; i < Main.maxPlayers; i++)
 			{
-				localPlayer.statLife = SharedCurrentLife;
-				localPlayer.statLifeMax2 = SharedMaxLife;
-
-				if (SharedCurrentLife <= 0 && !localPlayer.dead)
+				Player p = Main.player[i];
+				if (p.active)
 				{
-					BothDead = true;
-					localPlayer.statLife = 0;
-					localPlayer.KillMe(
-						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
-						1000,
-						0
-					);
+					p.statLife = SharedCurrentLife;
+					p.statLifeMax2 = SharedMaxLife;
+					if (p.TryGetModPlayer(out SoulboundPlayer sbp))
+					{
+						sbp.previousLife = SharedCurrentLife;
+					}
 				}
 			}
 
+			Player localPlayer = Main.LocalPlayer;
+			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead)
+			{
+				BothDead = true;
+				localPlayer.statLife = 0;
+				localPlayer.KillMe(
+					PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
+					1000,
+					0
+				);
+			}
+
 			// Broadcast to network
-			if (Main.netMode != NetmodeID.SinglePlayer)
+			if (Main.netMode != NetmodeID.SinglePlayer && SoulboundMod.Instance != null)
 			{
 				ModPacket packet = SoulboundMod.Instance.GetPacket();
 				packet.Write((byte)SoulboundMessageType.SyncHealthPool);
