@@ -1,0 +1,7 @@
+displayName = Soulbound: Shared Fate
+author = Finsk
+version = 0.1.0
+homepage = 
+hideCode = false
+hideResources = false
+includeSource = true
