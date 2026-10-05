@@ -79,7 +79,7 @@ namespace Soulbound
 		{
 			for (int i = 0; i < Main.maxPlayers; i++)
 			{
-				if (i != Player.whoAmI && Main.player[i].active && !Main.player[i].dead)
+				if (i != Player.whoAmI && Main.player[i].active && !Main.player[i].dead && !Main.player[i].ghost)
 				{
 					return Main.player[i];
 				}
@@ -146,7 +146,7 @@ namespace Soulbound
 				return;
 			}
 
-			if (Player.dead || !Player.active)
+			if (Player.dead || !Player.active || Player.ghost)
 			{
 				lastPosition = Player.position;
 				return;
@@ -275,7 +275,7 @@ namespace Soulbound
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
 				return;
 
-			if (Player.dead || !Player.active)
+			if (Player.dead || !Player.active || Player.ghost)
 				return;
 
 			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
@@ -288,7 +288,7 @@ namespace Soulbound
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
 				return;
 
-			if (Player.dead || !Player.active)
+			if (Player.dead || !Player.active || Player.ghost)
 				return;
 
 			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();

@@ -13,11 +13,13 @@ namespace Soulbound
 		public static int SharedMaxLife = 200;
 		public static bool Initialized = false;
 		public static bool BothDead = false;
+		public static bool IsKillingPartner = false;
 
 		public static void Reset()
 		{
 			Initialized = false;
 			BothDead = false;
+			IsKillingPartner = false;
 			SharedCurrentLife = 200;
 			SharedMaxLife = 200;
 		}
@@ -35,7 +37,7 @@ namespace Soulbound
 			int count = 0;
 			for (int i = 0; i < Main.maxPlayers; i++)
 			{
-				if (Main.player[i].active)
+				if (Main.player[i].active && !Main.player[i].ghost)
 					count++;
 			}
 			return Math.Max(1, count);
@@ -48,7 +50,7 @@ namespace Soulbound
 			for (int i = 0; i < Main.maxPlayers; i++)
 			{
 				Player p = Main.player[i];
-				if (p.active)
+				if (p.active && !p.ghost)
 				{
 					totalMax += GetBaseMaxLife(p);
 					activeCount++;
@@ -106,15 +108,23 @@ namespace Soulbound
 			}
 
 			Player localPlayer = Main.LocalPlayer;
-			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead)
+			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead && !IsKillingPartner)
 			{
-				BothDead = true;
-				localPlayer.statLife = 0;
-				localPlayer.KillMe(
-					PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
-					1000,
-					0
-				);
+				try
+				{
+					IsKillingPartner = true;
+					BothDead = true;
+					localPlayer.statLife = 0;
+					localPlayer.KillMe(
+						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
+						1000,
+						0
+					);
+				}
+				finally
+				{
+					IsKillingPartner = false;
+				}
 			}
 		}
 
@@ -140,15 +150,24 @@ namespace Soulbound
 			}
 
 			Player localPlayer = Main.LocalPlayer;
-			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead)
+			// Only kill localPlayer if they aren't ALREADY the one dying (avoids recursive KillMe during PreKill)
+			if (localPlayer.active && SharedCurrentLife <= 0 && !localPlayer.dead && !IsKillingPartner && localPlayer.whoAmI != fromPlayer)
 			{
-				BothDead = true;
-				localPlayer.statLife = 0;
-				localPlayer.KillMe(
-					PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
-					1000,
-					0
-				);
+				try
+				{
+					IsKillingPartner = true;
+					BothDead = true;
+					localPlayer.statLife = 0;
+					localPlayer.KillMe(
+						PlayerDeathReason.ByCustomReason(NetworkText.FromLiteral(localPlayer.name + " shared their soulbound partner's fatal blow.")),
+						1000,
+						0
+					);
+				}
+				finally
+				{
+					IsKillingPartner = false;
+				}
 			}
 
 			// Broadcast to network
