@@ -42,10 +42,7 @@ Configs: {
 
 	SoulboundClientConfig: {
 		DisplayName: Soulbound Client Config
-
-		Headers: {
-			VisualSettings: Visual & HUD Settings
-		}
+		Headers.VisualSettings: Visual & HUD Settings
 
 		ShowDistanceMeter: {
 			Label: Show Overhead Distance Meter
