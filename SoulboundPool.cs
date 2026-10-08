@@ -9,8 +9,8 @@ namespace Soulbound
 {
 	public static class SoulboundPool
 	{
-		public static int SharedCurrentLife = 200;
-		public static int SharedMaxLife = 200;
+		public static int SharedCurrentLife = 100;
+		public static int SharedMaxLife = 100;
 		public static bool Initialized = false;
 		public static bool BothDead = false;
 		public static bool IsKillingPartner = false;
@@ -20,8 +20,8 @@ namespace Soulbound
 			Initialized = false;
 			BothDead = false;
 			IsKillingPartner = false;
-			SharedCurrentLife = 200;
-			SharedMaxLife = 200;
+			SharedCurrentLife = 100;
+			SharedMaxLife = 100;
 		}
 
 		public static int GetBaseMaxLife(Player player)
@@ -29,7 +29,10 @@ namespace Soulbound
 			if (player == null || !player.active)
 				return 100;
 
-			return 100 + (player.ConsumedLifeCrystals * 20) + (player.ConsumedLifeFruit * 5);
+			if (player.TryGetModPlayer(out SoulboundPlayer sbp) && sbp.OwnMaxLife > 0)
+				return sbp.OwnMaxLife;
+
+			return Math.Max(1, player.statLifeMax);
 		}
 
 		public static int GetActivePlayerCount()
@@ -57,13 +60,7 @@ namespace Soulbound
 				}
 			}
 
-			// When only 1 player is connected in testing or waiting for partner, prepare 200 HP (10 hearts)
-			if (activeCount <= 1)
-			{
-				totalMax = Math.Max(totalMax * 2, 200);
-			}
-
-			return Math.Max(totalMax, 200);
+			return Math.Max(totalMax, 1);
 		}
 
 		public static void UpdatePoolFromServer(int currentLife, int maxLife)

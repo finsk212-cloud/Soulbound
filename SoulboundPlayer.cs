@@ -12,6 +12,9 @@ namespace Soulbound
 	public class SoulboundPlayer : ModPlayer
 	{
 		public int previousLife = 0;
+
+		// This player's own max life (base + life crystals/fruit + accessory/buff bonuses), before the shared pool is applied
+		public int OwnMaxLife = 0;
 		private bool justSpawned = true;
 		public int respawnInvulnerability = 0;
 
@@ -278,26 +281,6 @@ namespace Soulbound
 			lastPosition = Player.position;
 		}
 
-		public override void ModifyMaxStats(out StatModifier health, out StatModifier mana)
-		{
-			health = StatModifier.Default;
-			mana = StatModifier.Default;
-
-			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
-				return;
-
-			// Expand statLifeMax so Terraria's Classic and Fancy HUDs calculate the full 10+ hearts (20 HP per heart)
-			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
-			int currentBase = SoulboundPool.GetBaseMaxLife(Player);
-			health.Base = combinedMax - currentBase;
-		}
-
-		public override void PreSavePlayer()
-		{
-			// Restore vanilla base health before saving to disk so player file (.plr) is never corrupted
-			Player.statLifeMax = SoulboundPool.GetBaseMaxLife(Player);
-		}
-
 		public override void NaturalLifeRegen(ref float regen)
 		{
 			if (SoulboundConfig.Instance != null && SoulboundConfig.Instance.SharedHealthEnabled)
@@ -310,19 +293,6 @@ namespace Soulbound
 			}
 		}
 
-		public override void PostUpdateEquips()
-		{
-			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
-				return;
-
-			if (Player.dead || !Player.active || Player.ghost)
-				return;
-
-			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
-			SoulboundPool.SharedMaxLife = combinedMax;
-			Player.statLifeMax2 = combinedMax;
-		}
-
 		public override void PostUpdateMiscEffects()
 		{
 			if (SoulboundConfig.Instance == null || !SoulboundConfig.Instance.SharedHealthEnabled)
@@ -331,9 +301,16 @@ namespace Soulbound
 			if (Player.dead || !Player.active || Player.ghost)
 				return;
 
+			// statLifeMax2 is reset every tick, so here it holds only this player's own max (accessories included)
+			OwnMaxLife = Math.Max(1, Player.statLifeMax2);
+
 			int combinedMax = SoulboundPool.CalculateCombinedMaxLife();
 			SoulboundPool.SharedMaxLife = combinedMax;
 			Player.statLifeMax2 = combinedMax;
+
+			// Partner left or max shrank: keep the pool within the new max
+			if (SoulboundPool.Initialized && SoulboundPool.SharedCurrentLife > combinedMax)
+				SoulboundPool.SharedCurrentLife = combinedMax;
 
 			if (justSpawned)
 			{
