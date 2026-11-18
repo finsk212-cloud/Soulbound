@@ -55,3 +55,19 @@ Configs: {
 		}
 	}
 }
+
+NPCs: {
+	TwoB: {
+		DisplayName: 2B
+		Bestiary: A combat android of the YoRHa forces. She keeps her feelings to herself, but she will not let you fall.
+
+		Dialogue: {
+			Normal1: Don't get in my way. ...Or do. I'll cover you either way.
+			Normal2: I don't need your thanks. Just stay alive.
+			Normal3: Pod 042 says there's a 100% chance you'll ignore my advice. Prove it wrong.
+			SharedFate: Your fate and your partner's are bound together. If one of you falls, you both do. Don't make me watch that.
+			Hardmode: The air feels different now. Something has woken up. Stay alert.
+			BloodMoon: Machines would at least be predictable. These things are not. Stay close.
+		}
+	}
+}
